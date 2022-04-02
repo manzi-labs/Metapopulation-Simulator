@@ -2,11 +2,15 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Button = UnityEngine.UI.Button;
+using Quaternion = UnityEngine.Quaternion;
 using Random = UnityEngine.Random;
+using Vector2 = UnityEngine.Vector2;
+using Vector3 = UnityEngine.Vector3;
 
 public class SimulationManager : MonoBehaviour
 {
@@ -169,15 +173,8 @@ public class SimulationManager : MonoBehaviour
         foreach (SpeciesAsset asset in _speciesAssets)
         {
             //convert asset to agent
-            SpeciesAgent agent = new SpeciesAgent
-            {
-                name = asset.name,
-                maxAge = asset.maxAge,
-                childQuantityRangeProbability = asset.childQuantityRangeProbability,
-                initialMigrationProbability = asset.initialMigrationProbability,
-                maxMigrationDistance = asset.maxMigrationDistance,
-                spawnProbability = asset.initialSpawnProbability,
-            };
+            SpeciesAgent agent = new SpeciesAgent(asset.name, 0, asset.maxAge, asset.initialSpawnProbability,
+                asset.childQuantityRangeProbability, asset.initialMigrationProbability, asset.maxMigrationDistance);
 
             Debug.Log($"Species: {agent.name}");
             //get requirements from serialized assets
@@ -206,7 +203,7 @@ public class SimulationManager : MonoBehaviour
                 Vector3 cellScenePosition = new Vector3(x * (cellTileSize + cellTileBorder), 0, z *
                     (cellTileSize + cellTileBorder));
                 GameObject cellGameObject = Instantiate(cellPrefab, cellScenePosition, Quaternion.identity, cellParent.transform);
-                Cell simulationCell = new Cell(speciesList, resourceList, new Vector2(x,z));
+                Cell simulationCell = new Cell(speciesList, resourceList, new Vector2(x,z), simulationDimentions);
                 simulationArray[x, z] = simulationCell;
                 cellLookupDictionary.Add(cellGameObject, simulationCell);
             }
@@ -224,13 +221,28 @@ public class SimulationManager : MonoBehaviour
     {
         nextTickButton.interactable = false;
         
-        foreach (KeyValuePair<GameObject, Cell> _keyValuePair in cellLookupDictionary)
+        // foreach (KeyValuePair<GameObject, Cell> _keyValuePair in cellLookupDictionary)
+        // {
+        //     _keyValuePair.Value.CellTick();
+        //     UpdateCellStates(_keyValuePair);
+        // }
+
+        for (int i = 0; i < cellLookupDictionary.Count; i++)
         {
-            _keyValuePair.Value.Tick();
-            UpdateCellStates(_keyValuePair);
+            KeyValuePair<GameObject, Cell> kvp = cellLookupDictionary.ElementAt(i);
+            MigrateAgents(kvp.Value.CellTick()); //update each cell, and migrate the agents
+            
         }
         
         nextTickButton.interactable = true;
+    }
+
+    public void MigrateAgents(Dictionary<SpeciesAgent, Vector2> migratoryAgents)
+    {
+        foreach (KeyValuePair<SpeciesAgent, Vector2> kvp in migratoryAgents)
+        {
+            
+        }
     }
     
     #endregion
@@ -240,16 +252,20 @@ public class Cell
 {
     public Vector2 cellCoords;
     public Dictionary<SpeciesAgent, List<SpeciesAgent>> speciesPopulation;
+    public Dictionary<SpeciesAgent, List<Vector2>> possibleDestinations;
     public Dictionary<ResourceAsset, float> resoursePopulation;
     Dictionary<ResourceAsset, int> resourceConsumption;
+    
     public CellState currentState;
-    public Cell(List<SpeciesAgent> _species, List<ResourceAsset> _resourceAssets, Vector2 _cellCoords)
+    
+    public Cell(List<SpeciesAgent> _species, List<ResourceAsset> _resourceAssets, Vector2 _cellCoords, Vector2 simulationDimentions)
     {
         this.cellCoords = _cellCoords;
         resoursePopulation = new Dictionary<ResourceAsset, float>();
         speciesPopulation = new Dictionary<SpeciesAgent, List<SpeciesAgent>>();
         resourceConsumption = new Dictionary<ResourceAsset, int>();
-        
+        possibleDestinations = new Dictionary<SpeciesAgent, List<Vector2>>();
+
         foreach (ResourceAsset asset in _resourceAssets)
         {
             
@@ -267,7 +283,7 @@ public class Cell
             bool habitable = true;
             foreach (ResourceAsset resource in species.resourceRequirements.Keys)
             {
-                if (resoursePopulation.ContainsKey(resource))
+                if (resoursePopulation.ContainsKey(resource)) 
                 {
                     if (resoursePopulation[resource] < species.resourceRequirements[resource])
                     {
@@ -284,6 +300,23 @@ public class Cell
             {
                 speciesPopulation.Add(species, new List<SpeciesAgent>());
             }
+            
+            possibleDestinations.Add(species, new List<Vector2>());
+
+            int minX = (int) Mathf.Clamp(cellCoords.x - species.maxMigrationDistance, 0, simulationDimentions.x);
+            int maxX = (int) Mathf.Clamp(cellCoords.x + species.maxMigrationDistance, 0, simulationDimentions.x);
+            
+            int minY = (int) Mathf.Clamp(cellCoords.y - species.maxMigrationDistance, 0, simulationDimentions.y);
+            int maxY = (int) Mathf.Clamp(cellCoords.y + species.maxMigrationDistance, 0, simulationDimentions.y);
+
+            for (int i = minX; i >= maxX; i++)
+            {
+                for (int j = minY; j >= maxY; j++)
+                {
+                    possibleDestinations[species].Add(new Vector2(i,j)); //added destinations might not be habitable
+                }
+            }
+
         }
 
         foreach (SpeciesAgent species in speciesPopulation.Keys)
@@ -299,23 +332,16 @@ public class Cell
                 Debug.Log($"adding {species.name} * {count}");
                 for (int i = 0; i < count; i++)
                 {
-                    SpeciesAgent agent = new SpeciesAgent
-                    {
-                        age = 0,
-                        maxAge = species.maxAge,
-                        name = species.name,
-                        childQuantityRangeProbability = species.childQuantityRangeProbability,
-                        resourceRequirements = species.resourceRequirements,
-                        spawnProbability = species.spawnProbability,
-                        location = cellCoords,
-                        currentCell = this,
-                    };
-                    
+                    SpeciesAgent agent = new SpeciesAgent(species.name, 0, species.maxAge, species.spawnProbability, species.childQuantityRangeProbability, species.initialMigrationProbability, species.maxMigrationDistance);
+                    agent.resourceRequirements = species.resourceRequirements;
+                    agent.location = cellCoords;
+                    agent.currentCell = this;
+
                     speciesPopulation[species].Add(agent);
                 }
             }
         }
-
+        
         //update view
         if (speciesPopulation.Keys.Count > 0)
         {
@@ -330,16 +356,16 @@ public class Cell
         }
     }
 
-    public void Tick()
+    public Dictionary<SpeciesAgent, Vector2> CellTick()
     {
-        Debug.Log("Tick!");
-
-        //update consumption
+        Dictionary<SpeciesAgent, Vector2> migratingAgents = new Dictionary<SpeciesAgent, Vector2>();
+        //update consumption amounts
         foreach (KeyValuePair<SpeciesAgent, List<SpeciesAgent>> speciesKeyValuePair in speciesPopulation)
         {
             List<SpeciesAgent> deadAgents = new List<SpeciesAgent>();
             List<SpeciesAgent> newAgents = new List<SpeciesAgent>();
-            
+
+            //process consumption of resources
             foreach (ResourceAsset resource in speciesKeyValuePair.Key.resourceRequirements.Keys)
             {
                 if(!resourceConsumption.ContainsKey(resource))
@@ -355,48 +381,48 @@ public class Cell
             
             // Tick Agent
             foreach (SpeciesAgent agent in speciesKeyValuePair.Value)
-             {
-                 Debug.Log("Agent Tick!");
+            {
+                 //Kill dead agents
                  if (agent.age >= agent.maxAge)
                  {
                      deadAgents.Add(agent);
                  }
-
-                 if (agent.carryChild && agent.age == agent.birthAge)
+                 
+                 //spawn new children
+                 if ((agent.carryChild && agent.age == agent.birthAge))
                  {
-                     
+                     Debug.Log("calculating childs");
                      int childCount = (int) Random.Range(agent.childQuantityRangeProbability.x,
                          agent.childQuantityRangeProbability.y);
                      Debug.Log($"{childCount} {agent.name}s have been born at {cellCoords}");
                      for (int i = 0; i < childCount; i++)
                      {
-                         SpeciesAgent child = new SpeciesAgent
-                         {
-                             age = 0,
-                             maxAge = agent.maxAge,
-                             name = agent.name,
-                             childQuantityRangeProbability = agent.childQuantityRangeProbability,
-                             resourceRequirements = agent.resourceRequirements,
-                             spawnProbability = agent.spawnProbability,
-                             location = cellCoords,
-                             currentCell = this,
-                         };
+                         SpeciesAgent child = new SpeciesAgent(agent.name, 0, agent.maxAge, agent.spawnProbability, agent.childQuantityRangeProbability, agent.initialMigrationProbability, agent.maxMigrationDistance);
+                         child.resourceRequirements = agent.resourceRequirements;
                          
                          newAgents.Add(child);
-                    
-                         // speciesPopulation[agent].Add(agent);
                      }
                  }
-
+                 
+                 //process migrating agents
                  if (agent.willMigrate && agent.age == agent.migrateAge)
                  {
-                     //calculate possible cells to send migrate too
+                     //mark for migration
+                     // List<Vector2> habitableDestinations = possibleDestinations[agent.name]
                  }
                  
+                 
+                 // if (agent.willMigrate && agent.age == agent.migrateAge)
+                 // {
+                 //     Vector2 newCell = possibleMigrationCells[Random.Range(0, possibleMigrationCells.Count-1)];
+                 //     migratedAgents.Add(agent, newCell);
+                 //     deadAgents.Add(agent); //remove from this cell
+                 // }
+                 
                  agent.Tick();
-             }
+            }
             
-             //Add new and remove old
+            //Add new and remove dead agents from lists
             foreach (SpeciesAgent agent in newAgents)
              {
                  foreach (SpeciesAgent speciesAgent in speciesPopulation.Keys)
@@ -404,22 +430,41 @@ public class Cell
                      if (speciesAgent.name == agent.name)
                      {
                          speciesPopulation[speciesAgent].Add(agent);
+                         Debug.Log("New Agent!");
                      }
                  }
              }
-            foreach (SpeciesAgent agent in deadAgents)
-             {
+            foreach (SpeciesAgent agent in deadAgents){
                  foreach (SpeciesAgent speciesAgent in speciesPopulation.Keys)
                  {
                      if (speciesAgent.name == agent.name)
                      {
                          speciesPopulation[speciesAgent].Remove(agent);
+                         Debug.Log("Killed Agent!");
                      }
                  }
              }
+            
+            //Process the migrated agents 
+            // foreach (KeyValuePair<SpeciesAgent, Vector2> migration in migratedAgents)
+            // {
+            //     Debug.Log("calculating migration");
+            //     foreach (KeyValuePair<SpeciesAgent, List<SpeciesAgent>> species in SimulationManager.instance.simulationArray[(int) migration.Value.x, (int) migration.Value.y].speciesPopulation)
+            //     {
+            //         if (species.Key.name == migration.Key.name)
+            //         {
+            //             SpeciesAgent agent = migration.Key;
+            //             agent.migrated = true;
+            //             species.Value.Add(agent);
+            //             Debug.Log("Migrated!");
+            //         }
+            //     }
+            // }
+            
+            
         }
         
-        // Update Resources
+        // update resources
         for (int i = 0; i < resoursePopulation.Keys.Count; i++)
         {
             ResourceAsset resourceAsset = resoursePopulation.ElementAt(i).Key;
@@ -435,7 +480,7 @@ public class Cell
             resoursePopulation[resourceAsset] = Mathf.Clamp(newQuantity, 0, resourceAsset.capacity);
         }
         
-        //Update State
+        //update State
         foreach (SpeciesAgent species in speciesPopulation.Keys)
         {
             bool habitable = true;
@@ -470,6 +515,8 @@ public class Cell
                 currentState = CellState.clear;
             }
         }
+
+        return migratingAgents;
     }
 }
 
@@ -482,7 +529,7 @@ public class SpeciesAgent
     public float spawnProbability;
     public Vector3 childQuantityRangeProbability;
     public float initialMigrationProbability;
-    public float maxMigrationDistance;
+    public int maxMigrationDistance;
     public Vector2 location;
     public Dictionary<ResourceAsset, int> resourceRequirements;
 
@@ -493,17 +540,28 @@ public class SpeciesAgent
     public int birthAge;
     public bool migrated;
 
-    public SpeciesAgent()
+    public SpeciesAgent(string _name, int _age, int _maxAge, float _spawnProbability, Vector3 _childQuantityRangeProbability, float _initialMigrationProbability, int _maxMigrationDistance)
     {
+        name = _name;
+        age = _age;
+        maxAge = _maxAge;
+        spawnProbability = _spawnProbability;
+        childQuantityRangeProbability = _childQuantityRangeProbability;
+        initialMigrationProbability = _initialMigrationProbability;
+        maxMigrationDistance = maxMigrationDistance;
+        
         resourceRequirements = new Dictionary<ResourceAsset, int>();
-        age = 0;
         migrated = false;
         
         float r = Random.Range(0.0f, 1.0f);
+        Debug.Log($"r: {r}, p: {childQuantityRangeProbability.z}");
         if (r >= (1-childQuantityRangeProbability.z))
         {
+            Debug.Log("Has Child");
             carryChild = true;
             childCount = (int) Random.Range(childQuantityRangeProbability.x, childQuantityRangeProbability.y);
+            birthAge = Random.Range(1, maxAge);
+            
         }
         else
         {
@@ -514,6 +572,12 @@ public class SpeciesAgent
         if (r >= (1-initialMigrationProbability))
         {
             willMigrate = true;
+            migrateAge = Random.Range(1, maxAge);
+            Debug.Log("Will Migrate!");
+            carryChild = true;
+            childCount = (int) Random.Range(childQuantityRangeProbability.x, childQuantityRangeProbability.y);
+            birthAge = Random.Range(1, maxAge);
+            //If migratory it should be able to have offspring when migrating.
         }
         else
         {
