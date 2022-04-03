@@ -429,9 +429,10 @@ MonoBehaviour:
   cellTileSize: 1
   cellTileBorder: 0.5
   cellPrefab: {fileID: 1760406083645777025, guid: 448e14dc8cf060a47a102e073217d2f5, type: 3}
+  migrationInstancePrefab: {fileID: 927662525235472092, guid: 2b77c39856ddeb2419edb26722cc3315, type: 3}
   clearCellColor: {r: 1, g: 1, b: 1, a: 0}
-  habitableCellColor: {r: 0.45738697, g: 0.8301887, b: 0.48878083, a: 0}
-  occupiedCellColor: {r: 0.45882353, g: 0.7209363, b: 0.83137256, a: 0}
+  habitableCellColor: {r: 0, g: 0.7992163, b: 1, a: 0}
+  occupiedCellColor: {r: 0.07094635, g: 1, b: 0.0037735105, a: 0}
   simulationDimentions: {x: 0, y: 0}
 --- !u!1 &167168613
 GameObject:

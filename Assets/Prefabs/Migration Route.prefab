@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 927662525235472094}
   - component: {fileID: 927662525235472093}
+  - component: {fileID: 807017038740931074}
   m_Layer: 0
   m_Name: Migration Route
   m_TagString: Untagged
@@ -130,3 +131,17 @@ LineRenderer:
     generateLightingData: 0
   m_UseWorldSpace: 1
   m_Loop: 0
+--- !u!114 &807017038740931074
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 927662525235472092}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b6b633a78694b4488637e83e5f4c92b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  lifeTimer: 0.5
+  yOffset: 0.3

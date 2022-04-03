@@ -42,7 +42,8 @@ public class SimulationManager : MonoBehaviour
     public float cellTileSize;
     public float cellTileBorder;
     public GameObject cellPrefab;
-    public GameObject[,] visualCells;
+    public GameObject migrationInstancePrefab;
+    public GameObject[,] visualArray;
     public Color clearCellColor;
     public Color habitableCellColor;
     public Color occupiedCellColor;
@@ -114,7 +115,7 @@ public class SimulationManager : MonoBehaviour
         _simulationTickCount++;
         simulationTickCounter.text = _simulationTickCount.ToString();
         
-        CellDetailManager.instance.UpdateDetails();
+        // CellDetailManager.instance.UpdateDetails();
         
         SimulationTick();
     }
@@ -162,6 +163,7 @@ public class SimulationManager : MonoBehaviour
         simulationDimentions = _simulationDimentions;
         cellLookupDictionary = new Dictionary<GameObject, Cell>();
         simulationArray = new Cell[(int) simulationDimentions.x, (int) simulationDimentions.y];
+        visualArray = new GameObject[(int) simulationDimentions.x, (int) simulationDimentions.y];
         speciesList = new List<SpeciesAgent>();
         
         float posX = (simulationDimentions.x / 2)*(cellTileSize+cellTileBorder);
@@ -206,53 +208,121 @@ public class SimulationManager : MonoBehaviour
                 Cell simulationCell = new Cell(speciesList, resourceList, new Vector2(x,z), simulationDimentions);
                 simulationArray[x, z] = simulationCell;
                 cellLookupDictionary.Add(cellGameObject, simulationCell);
+                visualArray[x, z] = cellGameObject;
+                UpdateCellVisual(x,z);
             }
         }
 
-        foreach (KeyValuePair<GameObject, Cell> _keyValuePair in cellLookupDictionary)
-        {
-            UpdateCellStates(_keyValuePair);
-        }
+        // foreach (KeyValuePair<GameObject, Cell> _keyValuePair in cellLookupDictionary)
+        // {
+        //     UpdateCellStates(_keyValuePair);
+        // }
 
         // nextTickButton.interactable = true;
+    }
+
+    public void UpdateCellVisual(int x, int y)
+    {
+        GameObject cellObject = visualArray[x,y];
+
+        Cell cell = simulationArray[x, y];
+        switch (cell.currentState)
+        {
+            case CellState.clear:
+                cellObject.GetComponent<Renderer>().material.SetColor("_Color", clearCellColor);
+                break;
+            case CellState.habitable:
+                cellObject.GetComponent<Renderer>().material.SetColor("_Color", habitableCellColor);
+                break;
+            case CellState.occupied:
+                cellObject.GetComponent<Renderer>().material.SetColor("_Color", occupiedCellColor);
+                break;
+        }
     }
 
     public void SimulationTick()
     {
         nextTickButton.interactable = false;
-        
-        // foreach (KeyValuePair<GameObject, Cell> _keyValuePair in cellLookupDictionary)
-        // {
-        //     _keyValuePair.Value.CellTick();
-        //     UpdateCellStates(_keyValuePair);
-        // }
 
         for (int i = 0; i < cellLookupDictionary.Count; i++)
         {
-            KeyValuePair<GameObject, Cell> kvp = cellLookupDictionary.ElementAt(i);
-            MigrateAgents(kvp.Value.CellTick()); //update each cell, and migrate the agents
-            
+            // KeyValuePair<GameObject, Cell> kvp = cellLookupDictionary.ElementAt(i);
+            // MigrateAgents(kvp.Value.CellTick()); //update each cell, and migrate the agents
         }
+
+        for (int x = 0; x < simulationArray.GetLength(0); x++)
+        {
+            for (int y = 0; y < simulationArray.GetLength(1); y++)
+            {
+                MigrateAgents(simulationArray[x,y].CellTick());
+                UpdateCellVisual(x,y);
+            }
+        }
+        
+        // foreach (KeyValuePair<GameObject, Cell> _keyValuePair in cellLookupDictionary)
+        // {
+        //     UpdateCellStates(_keyValuePair);
+        // }
         
         nextTickButton.interactable = true;
     }
 
-    public void MigrateAgents(Dictionary<SpeciesAgent, Vector2> migratoryAgents)
+    public void MigrateAgents(Dictionary<SpeciesAgent, List<Vector2>> migratoryAgents)
     {
-        foreach (KeyValuePair<SpeciesAgent, Vector2> kvp in migratoryAgents)
+        if (migratoryAgents.Keys.Count <=0 )
         {
-            
+            Debug.Log("No Migrations");
+        }
+        else{
+            foreach (KeyValuePair<SpeciesAgent, List<Vector2>> kvp in migratoryAgents)
+            {
+                //find suitable migration route
+                List<Vector2> potentialHabitats = new List<Vector2>();
+                Debug.Log($"DESTINATIONS TO CHECK {kvp.Value.Count}");
+                foreach (Vector2 destination in kvp.Value)
+                {
+                    Debug.Log(
+                        $"checking coord:{destination}, {simulationArray[(int) destination.x, (int) destination.y].currentState}");
+                    if (simulationArray[(int) destination.x, (int) destination.y].currentState == CellState.habitable ||
+                        simulationArray[(int) destination.x, (int) destination.y].currentState == CellState.occupied)
+                    {
+                        Debug.Log("potential habitat found");
+                        potentialHabitats.Add(destination);
+                    }
+                }
+
+                if (potentialHabitats.Count > 0)
+                {
+                    Vector2 destination = potentialHabitats[Random.Range(0, potentialHabitats.Count)];
+                    Debug.Log("migrating to random found habitat");
+
+                    GameObject migrationInstance = Instantiate(migrationInstancePrefab);
+
+                    Vector3 start = visualArray[(int) kvp.Key.location.x, (int) kvp.Key.location.y].transform.position;
+                    Vector3 end = visualArray[(int) destination.x, (int) destination.y].transform.position;
+
+                    migrationInstance.GetComponent<MigrationInstanceHook>().hook(start, end);
+                    
+                    
+                    simulationArray[(int) destination.x, (int) destination.y].AcceptMigration(kvp.Key);
+                }
+                else
+                {
+                    Debug.Log($"No potential habitats so dead agent at {kvp.Key.currentCell.cellCoords}");
+                }
+            }
         }
     }
-    
+
     #endregion
 }
 
 public class Cell
 {
     public Vector2 cellCoords;
-    public Dictionary<SpeciesAgent, List<SpeciesAgent>> speciesPopulation;
-    public Dictionary<SpeciesAgent, List<Vector2>> possibleDestinations;
+    public List<SpeciesAgent> speciesList;
+    public Dictionary<string, List<SpeciesAgent>> speciesPopulation;
+    public Dictionary<string, List<Vector2>> possibleDestinations;
     public Dictionary<ResourceAsset, float> resoursePopulation;
     Dictionary<ResourceAsset, int> resourceConsumption;
     
@@ -262,9 +332,10 @@ public class Cell
     {
         this.cellCoords = _cellCoords;
         resoursePopulation = new Dictionary<ResourceAsset, float>();
-        speciesPopulation = new Dictionary<SpeciesAgent, List<SpeciesAgent>>();
+        speciesPopulation = new Dictionary<string, List<SpeciesAgent>>();
+        speciesList = _species;
         resourceConsumption = new Dictionary<ResourceAsset, int>();
-        possibleDestinations = new Dictionary<SpeciesAgent, List<Vector2>>();
+        possibleDestinations = new Dictionary<string, List<Vector2>>();
 
         foreach (ResourceAsset asset in _resourceAssets)
         {
@@ -298,31 +369,34 @@ public class Cell
 
             if (habitable)
             {
-                speciesPopulation.Add(species, new List<SpeciesAgent>());
+                speciesPopulation.Add(species.name, new List<SpeciesAgent>());
             }
             
-            possibleDestinations.Add(species, new List<Vector2>());
+            possibleDestinations.Add(species.name, new List<Vector2>());
 
             int minX = (int) Mathf.Clamp(cellCoords.x - species.maxMigrationDistance, 0, simulationDimentions.x);
             int maxX = (int) Mathf.Clamp(cellCoords.x + species.maxMigrationDistance, 0, simulationDimentions.x);
             
             int minY = (int) Mathf.Clamp(cellCoords.y - species.maxMigrationDistance, 0, simulationDimentions.y);
             int maxY = (int) Mathf.Clamp(cellCoords.y + species.maxMigrationDistance, 0, simulationDimentions.y);
-
-            for (int i = minX; i >= maxX; i++)
+            
+            for (int i = minX; i < maxX; i++)
             {
-                for (int j = minY; j >= maxY; j++)
+                for (int j = minY; j < maxY; j++)
                 {
-                    possibleDestinations[species].Add(new Vector2(i,j)); //added destinations might not be habitable
+                    Debug.Log($"possible destination added: {i},{j}");
+                    possibleDestinations[species.name].Add(new Vector2(i,j)); //added destinations might not be habitable
                 }
             }
 
         }
 
-        foreach (SpeciesAgent species in speciesPopulation.Keys)
+        foreach (string speciesName in speciesPopulation.Keys)
         {
             //Is Habitable to all here
-            Debug.Log($"checking {species.name}");
+
+            SpeciesAgent species = speciesList.Find(s => s.name == speciesName);
+            
             float probability = Random.Range(0.0f, 1.0f);
             float count = Random.Range(species.childQuantityRangeProbability.x,
                 species.childQuantityRangeProbability.y);
@@ -337,7 +411,7 @@ public class Cell
                     agent.location = cellCoords;
                     agent.currentCell = this;
 
-                    speciesPopulation[species].Add(agent);
+                    speciesPopulation[speciesName].Add(agent);
                 }
             }
         }
@@ -346,9 +420,9 @@ public class Cell
         if (speciesPopulation.Keys.Count > 0)
         {
             currentState = CellState.habitable;
-            foreach (SpeciesAgent species in speciesPopulation.Keys)
+            foreach (string speciesName in speciesPopulation.Keys)
             {
-                if (speciesPopulation[species].Count > 0)
+                if (speciesPopulation[speciesName].Count > 0)
                 {
                     currentState = CellState.occupied;
                 }
@@ -356,26 +430,26 @@ public class Cell
         }
     }
 
-    public Dictionary<SpeciesAgent, Vector2> CellTick()
+    public Dictionary<SpeciesAgent, List<Vector2>> CellTick()
     {
-        Dictionary<SpeciesAgent, Vector2> migratingAgents = new Dictionary<SpeciesAgent, Vector2>();
-        //update consumption amounts
-        foreach (KeyValuePair<SpeciesAgent, List<SpeciesAgent>> speciesKeyValuePair in speciesPopulation)
+        Dictionary<SpeciesAgent, List<Vector2>> migratingAgents = new Dictionary<SpeciesAgent, List<Vector2>>();
+        
+        foreach (KeyValuePair<string, List<SpeciesAgent>> speciesKeyValuePair in speciesPopulation)
         {
             List<SpeciesAgent> deadAgents = new List<SpeciesAgent>();
             List<SpeciesAgent> newAgents = new List<SpeciesAgent>();
 
-            //process consumption of resources
-            foreach (ResourceAsset resource in speciesKeyValuePair.Key.resourceRequirements.Keys)
+            //calculate consumption of resources
+            foreach (ResourceAsset resource in speciesList.Find(s => s.name == speciesKeyValuePair.Key).resourceRequirements.Keys)
             {
                 if(!resourceConsumption.ContainsKey(resource))
                 {
                     resourceConsumption.Add(resource,
-                        (speciesKeyValuePair.Key.resourceRequirements[resource] * speciesKeyValuePair.Value.Count));
+                        (speciesList.Find(s => s.name == speciesKeyValuePair.Key).resourceRequirements[resource] * speciesKeyValuePair.Value.Count));
                 }
                 else
                 {
-                    resourceConsumption[resource] = (speciesKeyValuePair.Key.resourceRequirements[resource] * speciesKeyValuePair.Value.Count);
+                    resourceConsumption[resource] = (speciesList.Find(s => s.name == speciesKeyValuePair.Key).resourceRequirements[resource] * speciesKeyValuePair.Value.Count);
                 }
             }
             
@@ -391,77 +465,42 @@ public class Cell
                  //spawn new children
                  if ((agent.carryChild && agent.age == agent.birthAge))
                  {
-                     Debug.Log("calculating childs");
                      int childCount = (int) Random.Range(agent.childQuantityRangeProbability.x,
                          agent.childQuantityRangeProbability.y);
-                     Debug.Log($"{childCount} {agent.name}s have been born at {cellCoords}");
+                     
                      for (int i = 0; i < childCount; i++)
                      {
                          SpeciesAgent child = new SpeciesAgent(agent.name, 0, agent.maxAge, agent.spawnProbability, agent.childQuantityRangeProbability, agent.initialMigrationProbability, agent.maxMigrationDistance);
                          child.resourceRequirements = agent.resourceRequirements;
+                         
+                         child.currentCell = agent.currentCell;
+                         child.location = agent.location;
                          
                          newAgents.Add(child);
                      }
                  }
                  
                  //process migrating agents
-                 if (agent.willMigrate && agent.age == agent.migrateAge)
+                 if (agent.willMigrate && agent.age == agent.migrateAge && !agent.migrated)
                  {
-                     //mark for migration
-                     // List<Vector2> habitableDestinations = possibleDestinations[agent.name]
+                     //mark for migration and remove from population pool
+                     Debug.Log($"count of full possible destinations {possibleDestinations[agent.name].Count}");
+                     migratingAgents.Add(agent, possibleDestinations[agent.name]);
+                     deadAgents.Add(agent);
                  }
-                 
-                 
-                 // if (agent.willMigrate && agent.age == agent.migrateAge)
-                 // {
-                 //     Vector2 newCell = possibleMigrationCells[Random.Range(0, possibleMigrationCells.Count-1)];
-                 //     migratedAgents.Add(agent, newCell);
-                 //     deadAgents.Add(agent); //remove from this cell
-                 // }
-                 
+
                  agent.Tick();
             }
             
             //Add new and remove dead agents from lists
             foreach (SpeciesAgent agent in newAgents)
-             {
-                 foreach (SpeciesAgent speciesAgent in speciesPopulation.Keys)
-                 {
-                     if (speciesAgent.name == agent.name)
-                     {
-                         speciesPopulation[speciesAgent].Add(agent);
-                         Debug.Log("New Agent!");
-                     }
-                 }
-             }
-            foreach (SpeciesAgent agent in deadAgents){
-                 foreach (SpeciesAgent speciesAgent in speciesPopulation.Keys)
-                 {
-                     if (speciesAgent.name == agent.name)
-                     {
-                         speciesPopulation[speciesAgent].Remove(agent);
-                         Debug.Log("Killed Agent!");
-                     }
-                 }
-             }
-            
-            //Process the migrated agents 
-            // foreach (KeyValuePair<SpeciesAgent, Vector2> migration in migratedAgents)
-            // {
-            //     Debug.Log("calculating migration");
-            //     foreach (KeyValuePair<SpeciesAgent, List<SpeciesAgent>> species in SimulationManager.instance.simulationArray[(int) migration.Value.x, (int) migration.Value.y].speciesPopulation)
-            //     {
-            //         if (species.Key.name == migration.Key.name)
-            //         {
-            //             SpeciesAgent agent = migration.Key;
-            //             agent.migrated = true;
-            //             species.Value.Add(agent);
-            //             Debug.Log("Migrated!");
-            //         }
-            //     }
-            // }
-            
-            
+            {
+                 speciesPopulation[agent.name].Add(agent);
+            }
+            foreach (SpeciesAgent agent in deadAgents)
+            {
+                speciesPopulation[agent.name].Remove(agent);
+            }
         }
         
         // update resources
@@ -474,6 +513,7 @@ public class Cell
             //subtract consumption
             if (resourceConsumption.ContainsKey(resourceAsset))
             {
+                Debug.Log($"CONSUMING:{resourceConsumption[resourceAsset]}");
                 newQuantity -= resourceConsumption[resourceAsset];
             }
             
@@ -481,14 +521,14 @@ public class Cell
         }
         
         //update State
-        foreach (SpeciesAgent species in speciesPopulation.Keys)
+        foreach (string speciesName in speciesPopulation.Keys)
         {
             bool habitable = true;
-            foreach (ResourceAsset resource in species.resourceRequirements.Keys)
+            foreach (ResourceAsset resource in speciesList.Find(s => s.name == speciesName).resourceRequirements.Keys)
             {
                 if (resoursePopulation.ContainsKey(resource))
                 {
-                    if (resoursePopulation[resource] < species.resourceRequirements[resource])
+                    if (resoursePopulation[resource] < speciesList.Find(s => s.name == speciesName).resourceRequirements[resource])
                     {
                         habitable = false;
                     }
@@ -501,7 +541,7 @@ public class Cell
 
             if (habitable)
             {
-                if (speciesPopulation[species].Count > 0)
+                if (speciesPopulation[speciesName].Count > 0)
                 {
                     currentState = CellState.occupied;
                 }
@@ -518,6 +558,34 @@ public class Cell
 
         return migratingAgents;
     }
+
+    public void AcceptMigration(SpeciesAgent agent)
+    {
+        agent.migrated = true;
+        agent.willMigrate = false;
+        agent.currentCell = this;
+        agent.location = this.cellCoords;
+        
+        //set so agent will not remigrate and set locations
+        
+        if (speciesPopulation.ContainsKey(agent.name))
+        {
+            speciesPopulation[agent.name].Add(agent);
+            Debug.Log("agent arrived!");
+        }
+        else
+        {
+            if (currentState == CellState.habitable)
+            {
+                currentState = CellState.occupied; //change to occupied if newly moved to
+            }
+            
+            speciesPopulation.Add(agent.name, new List<SpeciesAgent>());
+            speciesPopulation[agent.name].Add(agent);
+            Debug.Log("agent arrived!");
+        }
+    }
+    
 }
 
 public class SpeciesAgent
@@ -548,7 +616,7 @@ public class SpeciesAgent
         spawnProbability = _spawnProbability;
         childQuantityRangeProbability = _childQuantityRangeProbability;
         initialMigrationProbability = _initialMigrationProbability;
-        maxMigrationDistance = maxMigrationDistance;
+        maxMigrationDistance = _maxMigrationDistance;
         
         resourceRequirements = new Dictionary<ResourceAsset, int>();
         migrated = false;

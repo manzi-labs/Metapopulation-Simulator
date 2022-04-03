@@ -8,9 +8,9 @@ public class SpeciesDetailHook : MonoBehaviour
     public TextMeshProUGUI speciesName;
     public TextMeshProUGUI speciesQuantity;
 
-    public void Init(SpeciesAgent _speciesAsset, int _quantity)
+    public void Init(string name, int _quantity)
     {
-        speciesName.text = _speciesAsset.name;
+        speciesName.text = name;
         speciesQuantity.text = _quantity.ToString();
     }
 }

@@ -72,11 +72,11 @@ public class CellDetailManager : MonoBehaviour
         }
         if(cell.speciesPopulation.Keys.Count > 0)
         {
-            foreach (SpeciesAgent speciesAgent in cell.speciesPopulation.Keys)
+            foreach (string speciesAgentName in cell.speciesPopulation.Keys)
             {
                 GameObject entry = Instantiate(speciesDetailPrefab, Vector3.zero, Quaternion.identity,
                     speciesGrid.transform);
-                entry.GetComponent<SpeciesDetailHook>().Init(speciesAgent, cell.speciesPopulation[speciesAgent].Count);
+                entry.GetComponent<SpeciesDetailHook>().Init(speciesAgentName, cell.speciesPopulation[speciesAgentName].Count);
             }
         }
     }
