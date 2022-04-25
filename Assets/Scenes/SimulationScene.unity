@@ -470,7 +470,7 @@ MonoBehaviour:
   cellParent: {fileID: 1996893989}
   cellTileSize: 1
   cellTileBorder: 0.5
-  cellPrefab: {fileID: 1760406083645777025, guid: 448e14dc8cf060a47a102e073217d2f5, type: 3}
+  cellPrefab: {fileID: 1715828862067743489, guid: 448e14dc8cf060a47a102e073217d2f5, type: 3}
   migrationInstancePrefab: {fileID: 927662525235472092, guid: 2b77c39856ddeb2419edb26722cc3315, type: 3}
   clearCellColor: {r: 1, g: 1, b: 1, a: 0}
   habitableCellColor: {r: 0, g: 0.7992163, b: 1, a: 0}
