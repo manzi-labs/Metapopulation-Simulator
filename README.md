@@ -7,3 +7,5 @@ To clone the project, clone the repoisitory to your system, and use Unity Hub wi
 installed to 'add project from disk', and locate the cloned repository.
 
 Unity will compile the code base and open the project.
+
+development log available at : http://manzi-labs.herokuapp.com/projects/8
